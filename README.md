@@ -17,8 +17,7 @@
    配置 API 密钥 : 在项目根目录下创建 .env 文件，并填入您的大型语言模型（如 DeepSeek）API 密钥。
    
    ```
-   DEEPSEEK_API_KEY=your_deepseek_ap
-   i_key
+   DEEPSEEK_API_KEY=your_deepseek_api_key
    ```
 ### 体验查询功能
 本项目提供了一个交互式的查询界面，让您可以快速体验智能浏览器的强大功能。
@@ -27,8 +26,7 @@
 
 ```
 python 
-d:\browser-use-self\browser-use-mai
-n\simple_search.py
+d:\browser-use-self\browser-use-main\simple_search.py
 ```
 启动后，在浏览器中打开 http://127.0.0.1:7860 ，您可以通过该界面输入任务需求，例如：
 
