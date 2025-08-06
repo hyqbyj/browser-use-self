@@ -2185,7 +2185,7 @@ class BrowserSession(BaseModel):
 					await self._check_and_handle_navigation(page)
 
 			try:
-				return await perform_click(lambda: element_handle and element_handle.click(timeout=1_500))
+				return await perform_click(lambda: element_handle and element_handle.click(timeout=10_000))
 			except URLNotAllowedError as e:
 				raise e
 			except Exception as e:
@@ -3351,11 +3351,11 @@ class BrowserSession(BaseModel):
 						viewport_expansion=self.browser_profile.viewport_expansion,
 						highlight_elements=self.browser_profile.highlight_elements,
 					),
-					timeout=45.0,  # 45 second timeout for DOM processing - generous for complex pages
+					timeout=90.0,  # 90 second timeout for DOM processing - generous for complex pages
 				)
 				self.logger.debug('✅ DOM processing completed')
 			except TimeoutError:
-				self.logger.warning(f'DOM processing timed out after 45 seconds for {page.url}')
+				self.logger.warning(f'DOM processing timed out after 90 seconds for {page.url}')
 				self.logger.warning('🔄 Falling back to minimal DOM state to allow basic navigation...')
 
 				# Create minimal DOM state for basic navigation
@@ -3462,7 +3462,7 @@ class BrowserSession(BaseModel):
 
 	# region - Page Health Check Helpers
 	@observe_debug(ignore_input=True)
-	async def _is_page_responsive(self, page: Page, timeout: float = 5.0) -> bool:
+	async def _is_page_responsive(self, page: Page, timeout: float = 10.0) -> bool:
 		"""Check if a page is responsive by trying to evaluate simple JavaScript."""
 		eval_task = None
 		try:
@@ -4124,7 +4124,7 @@ class BrowserSession(BaseModel):
 			if element_handle:
 				is_visible = await self._is_visible(element_handle)
 				if is_visible:
-					await element_handle.scroll_into_view_if_needed(timeout=1_000)
+					await element_handle.scroll_into_view_if_needed(timeout=10_000)
 				return element_handle
 			return None
 		except Exception as e:
@@ -4145,7 +4145,7 @@ class BrowserSession(BaseModel):
 			if element_handle:
 				is_visible = await self._is_visible(element_handle)
 				if is_visible:
-					await element_handle.scroll_into_view_if_needed(timeout=1_000)
+					await element_handle.scroll_into_view_if_needed(timeout=5_000)
 				return element_handle
 			return None
 		except Exception as e:
@@ -4213,7 +4213,7 @@ class BrowserSession(BaseModel):
 
 			# Ensure element is ready for input
 			try:
-				await element_handle.wait_for_element_state('stable', timeout=1_000)
+				await element_handle.wait_for_element_state('stable', timeout=5_000)
 				is_visible = await self._is_visible(element_handle)
 				if is_visible:
 					await element_handle.scroll_into_view_if_needed(timeout=1_000)
@@ -4223,7 +4223,7 @@ class BrowserSession(BaseModel):
 			# let's first try to click and type
 			try:
 				await element_handle.evaluate('el => {el.textContent = ""; el.value = "";}')
-				await element_handle.click(timeout=2_000)  # Add 2 second timeout
+				await element_handle.click(timeout=10_000)  # Increase to 10 second timeout
 				await asyncio.sleep(0.1)  # Increased sleep time
 				page = await self.get_current_page()
 				await page.keyboard.type(text)
@@ -4245,17 +4245,17 @@ class BrowserSession(BaseModel):
 			try:
 				if (await is_contenteditable.json_value() or tag_name == 'input') and not (readonly or disabled):
 					await element_handle.evaluate('el => {el.textContent = ""; el.value = "";}')
-					await element_handle.type(text, delay=5, timeout=5_000)  # Add 5 second timeout
+					await element_handle.type(text, delay=5, timeout=15_000)  # Increase to 15 second timeout
 				else:
 					# Try fill() first for supported elements
 					try:
-						await element_handle.fill(text, timeout=3_000)  # Add 3 second timeout
+						await element_handle.fill(text, timeout=10_000)  # Increase to 10 second timeout
 					except Exception as fill_error:
 						# If fill() fails because element doesn't support it, try type() instead
 						if 'not an <input>, <textarea>, <select>' in str(fill_error):
 							self.logger.debug(f'Element does not support fill(), using type() instead: {fill_error}')
 							await element_handle.evaluate('el => {el.textContent = ""; el.value = "";}')
-							await element_handle.type(text, delay=5, timeout=5_000)
+							await element_handle.type(text, delay=5, timeout=15_000)
 						else:
 							raise
 			except Exception as e:

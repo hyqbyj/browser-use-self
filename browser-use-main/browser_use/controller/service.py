@@ -154,6 +154,9 @@ class Controller(Generic[Context]):
 				raise Exception(f'Element index {params.index} does not exist - retry or use alternative actions')
 
 			initial_pages = len(browser_session.tabs)
+			# 记录点击前的页面URL，用于检测页面跳转
+			current_page = await browser_session.get_current_page()
+			initial_url = current_page.url
 
 			# if element has file uploader then dont click
 			# Check if element is actually a file input (not just contains file-related keywords)
@@ -166,6 +169,10 @@ class Controller(Generic[Context]):
 
 			try:
 				download_path = await browser_session._click_element_node(element_node)
+				
+				# 等待一小段时间让页面变化生效
+				await asyncio.sleep(1)
+				
 				if download_path:
 					emoji = '💾'
 					msg = f'Downloaded file to {download_path}'
@@ -175,12 +182,30 @@ class Controller(Generic[Context]):
 
 				logger.info(f'{emoji} {msg}')
 				logger.debug(f'Element xpath: {element_node.xpath}')
+				
+				# 检测新标签页打开
 				if len(browser_session.tabs) > initial_pages:
 					new_tab_msg = 'New tab opened - switching to it'
 					msg += f' - {new_tab_msg}'
 					emoji = '🔗'
 					logger.info(f'{emoji} {new_tab_msg}')
 					await browser_session.switch_to_tab(-1)
+				else:
+					# 检测当前页面URL是否发生变化（页面跳转）
+					current_page_after_click = await browser_session.get_current_page()
+					new_url = current_page_after_click.url
+					
+					# 如果URL发生了变化，说明发生了页面跳转
+					if new_url != initial_url:
+						page_redirect_msg = f'Page redirected from {initial_url} to {new_url}'
+						msg += f' - {page_redirect_msg}'
+						logger.info(f'🔄 {page_redirect_msg}')
+						# 等待新页面完全加载
+						try:
+							await current_page_after_click.wait_for_load_state('domcontentloaded', timeout=5000)
+						except Exception:
+							pass  # 如果等待超时，继续执行
+				
 				return ActionResult(extracted_content=msg, include_in_memory=True, long_term_memory=msg)
 			except Exception as e:
 				error_msg = str(e)

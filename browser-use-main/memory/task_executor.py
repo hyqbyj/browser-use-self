@@ -56,11 +56,12 @@ class TaskExecutor:
             
         except Exception as e:
             # 返回默认计划
+            task_type = self._determine_task_type(question)
             return {
                 "task_id": f"task_{int(time.time())}",
                 "question": question,
-                "task_type": "simple",
-                "estimated_steps": 8,
+                "task_type": task_type,
+                "estimated_steps": 15,  # 增加默认步骤数以适应复杂任务
                 "execution_strategy": "使用默认策略执行任务",
                 "needs_login": False,
                 "similar_records": [],
@@ -138,6 +139,59 @@ class TaskExecutor:
 """
         
         return prompt
+    
+    def _determine_task_type(self, question: str) -> str:
+        """智能判断任务类型"""
+        if not question:
+            return "simple"
+        
+        question_lower = question.lower()
+        
+        # 复杂任务的关键词
+        complex_indicators = [
+            # 多步操作
+            '步骤', '然后', '接着', '之后', '完成后', '等待', '检测', '确认',
+            # 页面交互
+            '滚动', '点击', '输入', '搜索', '查询', '定位', '识别', '选择',
+            # 元素操作
+            '按钮', '链接', '卡片', '列表', '表单', '输入框', '下拉框',
+            # 登录和认证
+            '登录', '账号', '密码', '验证', '认证',
+            # 数据提取
+            '提取', '获取', '收集', '整理', '分析', '统计',
+            # 页面导航
+            '跳转', '进入', '访问', '打开', '切换', '返回',
+            # 条件判断
+            '如果', '检查', '判断', '验证', '确保', '监控'
+        ]
+        
+        # 计算复杂度指标
+        complexity_score = 0
+        
+        # 检查关键词
+        for indicator in complex_indicators:
+            if indicator in question_lower:
+                complexity_score += 1
+        
+        # 检查数字步骤（如1. 2. 3.）
+        import re
+        step_pattern = r'\d+\s*[.、]'
+        step_matches = re.findall(step_pattern, question)
+        if len(step_matches) >= 3:
+            complexity_score += 2
+        
+        # 检查任务长度
+        if len(question) > 200:
+            complexity_score += 1
+        
+        # 检查特定网站操作
+        website_operations = ['管理', '配置', '设置', '操作', '控制台', '后台']
+        for op in website_operations:
+            if op in question_lower:
+                complexity_score += 1
+        
+        # 根据复杂度评分判断类型
+        return "complex" if complexity_score >= 3 else "simple"
     
     def _parse_analysis_result(self, analysis_result, question: str = "") -> Dict:
         """解析LLM分析结果"""
@@ -218,9 +272,11 @@ class TaskExecutor:
             print(f"原始结果内容: {str(analysis_result)[:500]}...")  # 调试信息
             # 根据问题生成针对性的默认策略
             default_strategy = self._generate_default_strategy(question)
+            # 智能判断任务类型
+            task_type = self._determine_task_type(question)
             return {
-                "task_type": "simple",
-                "max_steps": 8,
+                "task_type": task_type,
+                "max_steps": 15,  # 增加默认步骤数以适应复杂任务
                 "needs_login": False,
                 "execution_strategy": default_strategy,
                 "success_factors": []
@@ -249,7 +305,7 @@ class TaskExecutor:
             
             result = {
                 "task_type": "simple",
-                "max_steps": 8,
+                "max_steps": 15,  # 增加默认步骤数以适应复杂任务
                 "needs_login": False,
                 "execution_strategy": "",
                 "success_factors": []
@@ -340,7 +396,7 @@ class TaskExecutor:
                 llm=self.llm,
                 use_vision=True,
                 browser_session=browser_session,
-                max_steps=min(execution_plan["estimated_steps"], 99),  # 限制最大步骤数
+                max_steps=max(execution_plan["estimated_steps"] * 2, 20),  # 增加最大步骤数，至少20步
                 action_description_strategy="concise",  # 使用简洁模式
                 retry_attempts=2,
                 wait_between_actions=2.0  # 减少等待时间
@@ -408,12 +464,50 @@ class TaskExecutor:
         # 基础提示
         if task_type == "complex":
             prompt = f"""
-**角色：** 你是一个高效的网站操作助手，能够快速执行网站操作任务。
+**角色：** 你是一个专业的网站操作助手，擅长执行复杂的网站自动化任务。
 
 **用户需求：** {question}
 
 **执行策略：**
 {strategy}
+
+**重要操作指导：**
+1. **页面滚动**：当需要加载更多内容时，使用scroll_down或scroll_up操作
+   - 使用scroll_down()或scroll_up()方法进行页面滚动
+   - 滚动后等待内容加载，然后重新识别页面元素
+   - 对于卡片列表等动态内容，可能需要多次滚动才能看到所有内容
+
+2. **元素识别**：仔细识别页面中的卡片、按钮、输入框等元素
+   - 特别注意卡片类元素，它们通常包含ID、名称等关键信息
+   - 如果一次没有找到目标元素，尝试滚动页面后重新查找
+   - 使用文本内容、ID、类名等多种方式定位元素
+
+3. **等待加载**：操作后适当等待页面加载完成
+   - 点击按钮后等待页面响应
+   - 滚动后等待新内容加载
+   - 搜索后等待结果显示
+
+4. **精确定位**：通过文本内容、ID、类名等准确定位目标元素
+   - 优先使用ID、data属性等唯一标识
+   - 结合文本内容进行精确匹配
+   - 对于卡片元素，通过内部文本内容定位
+
+5. **持续执行**：不要因为单次操作失败就停止，尝试不同的定位方法
+   - 如果找不到元素，先尝试滚动页面
+   - 等待页面加载完成后重新查找
+   - 尝试不同的定位方法
+
+6. **完整任务**：确保完成所有步骤，包括滚动、识别、点击等操作
+   - 按照任务描述的顺序执行每个步骤
+   - 验证每个步骤的执行结果
+   - 确保最终目标达成
+
+**特别注意事项：**
+- 对于机器人卡片等列表项，必须通过滚动查看所有内容
+- 卡片通常包含ID信息，要仔细识别和匹配
+- 不要因为初始页面没有看到目标就认为不存在
+- 滚动是查看完整内容的关键操作，必须充分利用
+- 卡片识别时要仔细查看内容，通过ID或名称进行精确匹配
 """
         else:
             search_url = f"https://www.bing.com/search?q={question.replace(' ', '+')}"
@@ -438,11 +532,12 @@ class TaskExecutor:
         prompt += """
 
 **重要执行要求：**
-1. 直接执行搜索，快速定位目标
-2. 优先点击权威、官方链接
-3. 快速提取核心信息
-4. 遇到错误立即换方法
-5. 最终输出清晰总结
+1. **完整执行**：必须完成所有步骤，不要中途停止
+2. **页面交互**：充分利用滚动、点击、输入等操作
+3. **元素定位**：仔细识别和定位页面元素
+4. **错误处理**：遇到问题时尝试不同方法，不要轻易放弃
+5. **结果提取**：最终提取并输出完整的目标信息
+6. **持续操作**：对于需要多步操作的任务，确保每一步都执行到位
 
 现在开始执行任务：
 """
