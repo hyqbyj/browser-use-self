@@ -26,7 +26,7 @@
 
 ```
 python 
-d:\browser-use-self\browser-use-main\simple_search.py
+.\browser-use-self\browser-use-main\simple_search.py
 ```
 启动后，在浏览器中打开 http://127.0.0.1:7860 ，您可以通过该界面输入任务需求，例如：
 
